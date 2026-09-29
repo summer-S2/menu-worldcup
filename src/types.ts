@@ -1,10 +1,12 @@
 // 메뉴 트리
-// 질문: 질문 문장(title)과 두 선택지. 하나를 고르면 다음 노드로 이동
+// 질문: 질문 문장(title)과 2개 이상의 선택지. 하나를 고르면 다음 노드로 이동
 // 메뉴: 최종 결과
 // null: 아직 비어 있는 칸
 // id: 주소(/q/:id, /r/:id)에 쓰는 추측 불가능한 랜덤 값
 export type Option = { label: string; node: TreeNode };
-export type QuestionNode = { kind: "q"; id: string; title: string; left: Option; right: Option };
+export type QuestionNode = { kind: "q"; id: string; title: string; options: Option[] };
+
+export const MIN_OPTIONS = 2;
 export type MenuNode = { kind: "menu"; id: string; name: string; url: string };
 export type TreeNode = QuestionNode | MenuNode | null;
 
@@ -27,7 +29,8 @@ export function isValidNode(node: unknown, depth = 0): node is TreeNode {
   }
   if (n.kind === "q") {
     if (typeof n.title !== "string") return false;
-    return [n.left, n.right].every((opt) => {
+    if (!Array.isArray(n.options) || n.options.length < MIN_OPTIONS) return false;
+    return n.options.every((opt) => {
       if (!opt || typeof opt !== "object") return false;
       const o = opt as Record<string, unknown>;
       return typeof o.label === "string" && isValidNode(o.node, depth + 1);
@@ -47,7 +50,11 @@ export function normalizeNode(node: unknown, seen = new Set<string>(), depth = 0
   if (n.kind === "menu") return { kind: "menu", id, name: str(n.name), url: str(n.url) };
   if (n.kind === "q") {
     const opt = (o: any): Option => ({ label: str(o?.label), node: normalizeNode(o?.node, seen, depth + 1) });
-    return { kind: "q", id, title: str(n.title), left: opt(n.left), right: opt(n.right) };
+    // 예전 형식(left/right)도 options 배열로 변환
+    const raw: unknown[] = Array.isArray(n.options) ? n.options : [n.left, n.right];
+    const options = raw.map(opt);
+    while (options.length < MIN_OPTIONS) options.push({ label: "", node: null });
+    return { kind: "q", id, title: str(n.title), options };
   }
   return null;
 }
@@ -61,9 +68,35 @@ export function findNode(
   if (!node) return null;
   if (node.id === id) return { node, trail };
   if (node.kind === "menu") return null;
-  for (const opt of [node.left, node.right]) {
+  for (const opt of node.options) {
     const found = findNode(opt.node, id, [...trail, opt.label]);
     if (found) return found;
   }
   return null;
+}
+
+// 사이트 문구 (관리 화면에서 수정). 빈 값이면 기본 문구를 보여준다
+export type Settings = { introText: string; title: string; subtitle: string };
+
+export const DEFAULT_SETTINGS: Settings = {
+  introText: "메뉴를 골라볼까요?",
+  title: "오늘 뭐 먹지?",
+  subtitle: "하나만 골라요",
+};
+
+export const MAX_TEXT = 100;
+
+export function normalizeSettings(raw: unknown): Settings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" ? v.slice(0, MAX_TEXT) : "");
+  return { introText: str(r.introText), title: str(r.title), subtitle: str(r.subtitle) };
+}
+
+// 화면에 보여줄 문구 (빈 칸은 기본값으로)
+export function displaySettings(s: Settings): Settings {
+  return {
+    introText: s.introText.trim() || DEFAULT_SETTINGS.introText,
+    title: s.title.trim() || DEFAULT_SETTINGS.title,
+    subtitle: s.subtitle.trim() || DEFAULT_SETTINGS.subtitle,
+  };
 }

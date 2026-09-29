@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { findNode, type MenuNode, type Option, type QuestionNode, type TreeNode } from "../types";
-import { safeUrl } from "../api";
-import LinkPreview from "./LinkPreview";
 import FloatingEmojis from "./FloatingEmojis";
-import FallingParty from "./FallingParty";
-import ShareButton from "./ShareButton";
+import PickButton from "./PickButton";
+import ResultView from "./ResultView";
 
 const pathOf = (node: QuestionNode | MenuNode) => `/${node.kind === "q" ? "q" : "r"}/${node.id}`;
+const PICK_ANIM_MS = 420; // 고른 뒤 다음 화면으로 넘어가기까지 (전환 효과 시간)
 
 // 주소: /start       첫 질문
 //       /q/:id       중간 질문
@@ -17,7 +16,12 @@ export default function Game({ tree }: { tree: TreeNode }) {
   const navigate = useNavigate();
   // 아직 비어 있는 칸을 고른 경우 (주소 없이 화면에만 표시)
   const [pending, setPending] = useState<string | null>(null);
-  useEffect(() => setPending(null), [pathname]);
+  // 방금 고른 선택지 (전환 효과 중)
+  const [picked, setPicked] = useState<number | null>(null);
+  useEffect(() => {
+    setPending(null);
+    setPicked(null);
+  }, [pathname]);
 
   const restart = () => navigate("/start");
 
@@ -55,10 +59,21 @@ export default function Game({ tree }: { tree: TreeNode }) {
     return <Navigate to={want} replace />;
   }
 
-  const choose = (opt: Option) => {
-    if (opt.node) navigate(pathOf(opt.node));
-    else setPending(opt.label);
+  const choose = (opt: Option, i: number) => {
+    if (picked !== null) return;
+    setPicked(i);
+    navigator.vibrate?.(15);
+    window.setTimeout(() => {
+      if (opt.node) navigate(pathOf(opt.node));
+      else {
+        setPicked(null);
+        setPending(opt.label);
+      }
+    }, PICK_ANIM_MS);
   };
+
+  const pickClass = (i: number) =>
+    `pick c${i % 5}` + (picked === null ? "" : picked === i ? " chosen" : " dropped");
 
   let body;
   if (pending !== null) {
@@ -74,40 +89,35 @@ export default function Game({ tree }: { tree: TreeNode }) {
     );
     trail = [...trail, pending];
   } else if (current.kind === "menu") {
-    const url = safeUrl(current.url);
-    body = (
-      <div className="result">
-        <FallingParty />
-        <div className="step">오늘의 메뉴는</div>
-        <div className="big">{current.name || "???"}!</div>
-        {url && (
-          <div className="row" style={{ marginBottom: 12 }}>
-            <LinkPreview url={url} />
-          </div>
-        )}
-        <div className="row">
-          <ShareButton menuName={current.name} />
-          <button className="btn" onClick={restart}>
-            다시 하기
-          </button>
-        </div>
-      </div>
-    );
+    body = <ResultView key={current.id} menu={current} trail={trail} onRestart={restart} />;
   } else {
     const q = current;
     body = (
       <>
         <FloatingEmojis />
-        <div className="step">{trail.length + 1}번째 선택</div>
-        <h2 className="question">{q.title}</h2>
-        <div className="vs">
-          <button className="pick a" onClick={() => choose(q.left)}>
-            {q.left.label || "A"}
-          </button>
-          <span>VS</span>
-          <button className="pick b" onClick={() => choose(q.right)}>
-            {q.right.label || "B"}
-          </button>
+        {/* key가 바뀌면 다시 그려지면서 옆에서 미끄러져 들어온다 */}
+        <div key={q.id} className="q-enter">
+          <div className="step">{trail.length + 1}번째 선택</div>
+          {q.title.trim() && <h2 className="question">{q.title}</h2>}
+          {q.options.length === 2 ? (
+            <div className="vs">
+              <PickButton className={pickClass(0)} disabled={picked !== null} onClick={() => choose(q.options[0], 0)}>
+                {q.options[0].label || "A"}
+              </PickButton>
+              <span className={`vs-badge${picked !== null ? " hide" : ""}`}>VS</span>
+              <PickButton className={pickClass(1)} disabled={picked !== null} onClick={() => choose(q.options[1], 1)}>
+                {q.options[1].label || "B"}
+              </PickButton>
+            </div>
+          ) : (
+            <div className="picks">
+              {q.options.map((opt, i) => (
+                <PickButton key={i} className={pickClass(i)} disabled={picked !== null} onClick={() => choose(opt, i)}>
+                  {opt.label || String.fromCharCode(65 + (i % 26))}
+                </PickButton>
+              ))}
+            </div>
+          )}
         </div>
       </>
     );
@@ -116,7 +126,8 @@ export default function Game({ tree }: { tree: TreeNode }) {
   return (
     <section className="card">
       {body}
-      {trail.length > 0 && <div className="trail">{trail.join(" → ")}</div>}
+      {/* 결과 화면은 두구두구가 끝난 뒤 ResultView 안에서 보여줌 */}
+      {current.kind !== "menu" && trail.length > 0 && <div className="trail">{trail.join(" → ")}</div>}
     </section>
   );
 }

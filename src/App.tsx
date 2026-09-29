@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
-import type { TreeNode } from "./types";
-import { fetchTree } from "./api";
+import { displaySettings, type Settings, type TreeNode } from "./types";
+import { fetchData, type SiteData } from "./api";
 import Game from "./components/Game";
 import Admin from "./components/Admin";
 import PasswordModal from "./components/PasswordModal";
@@ -13,13 +13,15 @@ export default function App() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [tree, setTree] = useState<TreeNode>(null);
+  const [settings, setSettings] = useState<Settings>({ introText: "", title: "", subtitle: "" });
   const [load, setLoad] = useState<LoadState>("loading");
   const [password, setPassword] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTree()
-      .then((t) => {
-        setTree(t);
+    fetchData()
+      .then((d) => {
+        setTree(d.tree);
+        setSettings(d.settings);
         setLoad("ready");
       })
       .catch(() => setLoad("error"));
@@ -43,8 +45,15 @@ export default function App() {
     navigate("/start");
   };
 
-  // 인트로는 제목/카드 없이 화면 전체를 쓴다
-  if (pathname === "/") return <Intro />;
+  const onSaved = (d: SiteData) => {
+    setTree(d.tree);
+    setSettings(d.settings);
+  };
+
+  const text = displaySettings(settings);
+
+  // 인트로는 제목/카드 없이 화면 전체를 쓴다 (문구는 불러온 뒤에 표시해서 기본 문구가 잠깐 보였다 바뀌지 않게)
+  if (pathname === "/") return <Intro text={load === "loading" ? "" : text.introText} />;
 
   let content;
   if (load === "loading") content = <section className="card empty">불러오는 중...</section>;
@@ -56,7 +65,7 @@ export default function App() {
           path="/admin"
           element={
             password ? (
-              <Admin password={password} tree={tree} onSaved={setTree} onExit={exitAdmin} />
+              <Admin password={password} tree={tree} settings={settings} onSaved={onSaved} onExit={exitAdmin} />
             ) : (
               <PasswordModal onClose={() => navigate("/start")} onSuccess={setPassword} />
             )
@@ -72,9 +81,9 @@ export default function App() {
         <span className="egg" onClick={onEggClick}>
           🍽️
         </span>{" "}
-        <span className="title-text">오늘 뭐 먹지?</span>
+        <span className="title-text">{load === "loading" ? " " : text.title}</span>
       </h1>
-      <p className="sub">둘 중 하나만 골라요</p>
+      <p className="sub">{load === "loading" ? " " : text.subtitle}</p>
       {content}
     </main>
   );

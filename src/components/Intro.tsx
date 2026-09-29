@@ -1,6 +1,5 @@
 import { useNavigate } from "react-router";
 
-const TEXT = "메뉴를 골라볼까요?";
 const TOP_FOODS = ["🍕", "🍔", "🍣", "🍜", "🍝", "🍛", "🍱", "🥟", "🌮", "🍗", "🥩", "🍤", "🍙", "🥘"];
 const BOTTOM_FOODS = ["🍩", "🍰", "🧋", "🍦", "🥐", "🧁", "🍪", "🥞", "🍡", "🍓", "🍮", "🥨", "🍫", "🍧"];
 
@@ -18,7 +17,7 @@ function FoodStrip({ foods, direction }: { foods: string[]; direction: "left" | 
   );
 }
 
-export default function Intro() {
+export default function Intro({ text }: { text: string }) {
   const navigate = useNavigate();
 
   return (
@@ -26,8 +25,8 @@ export default function Intro() {
       <FoodStrip foods={TOP_FOODS} direction="left" />
 
       <div className="intro-center">
-        <h1 className="bounce-text" aria-label={TEXT}>
-          {Array.from(TEXT).map((ch, i) => (
+        <h1 className="bounce-text" aria-label={text}>
+          {Array.from(text || " ").map((ch, i) => (
             <span key={i} aria-hidden="true" style={{ animationDelay: `${i * 0.09}s` }}>
               {ch === " " ? " " : ch}
             </span>

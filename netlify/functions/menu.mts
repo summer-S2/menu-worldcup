@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { isValidNode, normalizeNode } from "../../src/types.ts";
+import { isValidNode, normalizeNode, normalizeSettings } from "../../src/types.ts";
 
 const MAX_BODY = 200_000;
 
@@ -17,14 +17,15 @@ export default async (req: Request) => {
     const tree = normalizeNode(raw);
     // 예전 형식(id 없음 등)이면 한 번 고쳐서 저장해 두어야 공유 링크의 id가 매번 바뀌지 않는다
     if (raw && JSON.stringify(raw) !== JSON.stringify(tree)) await store.setJSON("tree", tree);
-    return json({ tree });
+    const settings = normalizeSettings(await store.get("settings", { type: "json" }));
+    return json({ tree, settings });
   }
 
   if (req.method === "POST") {
     const text = await req.text();
     if (text.length > MAX_BODY) return json({ error: "too large" }, 413);
 
-    let body: { password?: unknown; verifyOnly?: unknown; tree?: unknown };
+    let body: { password?: unknown; verifyOnly?: unknown; tree?: unknown; settings?: unknown };
     try {
       body = JSON.parse(text);
     } catch {
@@ -39,6 +40,7 @@ export default async (req: Request) => {
 
     if (!isValidNode(body.tree)) return json({ error: "invalid tree" }, 400);
     await store.setJSON("tree", normalizeNode(body.tree));
+    if (body.settings !== undefined) await store.setJSON("settings", normalizeSettings(body.settings));
     return json({ ok: true });
   }
 
