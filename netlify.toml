@@ -4,3 +4,9 @@
 
 [functions]
   directory = "netlify/functions"
+
+# /q/..., /r/..., /admin 을 새로고침하거나 공유 링크로 바로 열어도 앱이 뜨도록
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

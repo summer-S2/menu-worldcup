@@ -1,10 +1,10 @@
-import type { TreeNode } from "./types";
+import { normalizeNode, type TreeNode } from "./types";
 
 export async function fetchTree(): Promise<TreeNode> {
   const res = await fetch("/api/menu");
   if (!res.ok) throw new Error(String(res.status));
-  const data = (await res.json()) as { tree: TreeNode };
-  return data.tree;
+  const data = (await res.json()) as { tree: unknown };
+  return normalizeNode(data.tree);
 }
 
 // 암호 확인. 맞으면 true, 틀리면 false, 그 외 오류는 throw

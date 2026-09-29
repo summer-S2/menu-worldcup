@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Option, QuestionNode, TreeNode } from "../types";
+import { newId, type Option, type QuestionNode, type TreeNode } from "../types";
 import { safeUrl, saveTree } from "../api";
 
 type Props = {
@@ -13,6 +13,8 @@ type Msg = { kind: "" | "ok" | "err"; text: string };
 
 const newQuestion = (): QuestionNode => ({
   kind: "q",
+  id: newId(),
+  title: "",
   left: { label: "", node: null },
   right: { label: "", node: null },
 });
@@ -26,12 +28,15 @@ function findProblems(node: TreeNode, path = "처음"): string[] {
     if (node.url.trim() && !safeUrl(node.url)) p.push(`${path}: 지도 URL은 http로 시작해야 함`);
     return p;
   }
-  return (["left", "right"] as const).flatMap((key) => {
-    const opt = node[key];
-    const name = opt.label.trim() || (key === "left" ? "A" : "B");
-    const p = opt.label.trim() ? [] : [`${path} → ${name}: 선택지 이름 없음`];
-    return [...p, ...findProblems(opt.node, `${path} → ${name}`)];
-  });
+  const own = node.title.trim() ? [] : [`${path}: 질문 문장 없음`];
+  return own.concat(
+    (["left", "right"] as const).flatMap((key) => {
+      const opt = node[key];
+      const name = opt.label.trim() || (key === "left" ? "A" : "B");
+      const p = opt.label.trim() ? [] : [`${path} → ${name}: 선택지 이름 없음`];
+      return [...p, ...findProblems(opt.node, `${path} → ${name}`)];
+    })
+  );
 }
 
 export default function Admin({ password, tree, onSaved, onExit }: Props) {
@@ -94,7 +99,7 @@ function NodeEditor({ node, onChange }: { node: TreeNode; onChange: (n: TreeNode
         <button className="btn small" onClick={() => onChange(newQuestion())}>
           + 질문 붙이기
         </button>
-        <button className="btn small" onClick={() => onChange({ kind: "menu", name: "", url: "" })}>
+        <button className="btn small" onClick={() => onChange({ kind: "menu", id: newId(), name: "", url: "" })}>
           + 메뉴 붙이기
         </button>
       </div>
@@ -138,6 +143,12 @@ function NodeEditor({ node, onChange }: { node: TreeNode; onChange: (n: TreeNode
         <span>❓ 질문</span>
         {remove}
       </div>
+      <input
+        type="text"
+        placeholder="질문 (예: 오늘은 뭐가 당겨?)"
+        value={node.title}
+        onChange={(e) => onChange({ ...node, title: e.target.value })}
+      />
       <OptionEditor dot="a" placeholder="선택지 A (예: 고기)" option={node.left} onChange={(o) => setOption("left", o)} />
       <OptionEditor dot="b" placeholder="선택지 B (예: 면)" option={node.right} onChange={(o) => setOption("right", o)} />
     </div>

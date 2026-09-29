@@ -11,7 +11,8 @@
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

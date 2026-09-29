@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { isValidNode } from "../../src/types.ts";
+import { isValidNode, normalizeNode } from "../../src/types.ts";
 
 const MAX_BODY = 200_000;
 
@@ -13,8 +13,11 @@ export default async (req: Request) => {
   const store = getStore("menu-worldcup");
 
   if (req.method === "GET") {
-    const tree = await store.get("tree", { type: "json" });
-    return json({ tree: tree ?? null });
+    const raw = await store.get("tree", { type: "json" });
+    const tree = normalizeNode(raw);
+    // 예전 형식(id 없음 등)이면 한 번 고쳐서 저장해 두어야 공유 링크의 id가 매번 바뀌지 않는다
+    if (raw && JSON.stringify(raw) !== JSON.stringify(tree)) await store.setJSON("tree", tree);
+    return json({ tree });
   }
 
   if (req.method === "POST") {
@@ -35,7 +38,7 @@ export default async (req: Request) => {
     if (body.verifyOnly) return json({ ok: true });
 
     if (!isValidNode(body.tree)) return json({ error: "invalid tree" }, 400);
-    await store.setJSON("tree", body.tree);
+    await store.setJSON("tree", normalizeNode(body.tree));
     return json({ ok: true });
   }
 
