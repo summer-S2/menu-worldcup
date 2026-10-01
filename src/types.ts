@@ -100,3 +100,62 @@ export function displaySettings(s: Settings): Settings {
     subtitle: s.subtitle.trim() || DEFAULT_SETTINGS.subtitle,
   };
 }
+
+// ── 월드컵 목록 ──
+// 관리자는 여러 월드컵을 저장하고, 활성화한 1개만 공개 페이지에 나온다
+export type Cup = { id: string; name: string; tree: TreeNode; settings: Settings; updatedAt: number };
+export type CupSummary = { id: string; name: string; menuCount: number; complete: boolean; updatedAt: number };
+export type CupsData = { activeId: string | null; cups: Cup[] };
+
+export const MAX_CUP_NAME = 40;
+
+export function countMenus(node: TreeNode): number {
+  if (!node) return 0;
+  if (node.kind === "menu") return 1;
+  return node.options.reduce((n, o) => n + countMenus(o.node), 0);
+}
+
+// 복제용: 내용은 그대로, 질문/메뉴 id만 새로 발급 (원본과 공유 링크가 섞이지 않게)
+export function cloneWithNewIds(node: TreeNode): TreeNode {
+  if (!node) return null;
+  if (node.kind === "menu") return { ...node, id: newId() };
+  return {
+    ...node,
+    id: newId(),
+    options: node.options.map((o) => ({ label: o.label, node: cloneWithNewIds(o.node) })),
+  };
+}
+
+export function normalizeCup(raw: unknown): Cup | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== "string" || !ID_RE.test(r.id)) return null;
+  return {
+    id: r.id,
+    name: typeof r.name === "string" ? r.name.slice(0, MAX_CUP_NAME) : "",
+    tree: normalizeNode(r.tree),
+    settings: normalizeSettings(r.settings),
+    updatedAt: typeof r.updatedAt === "number" ? r.updatedAt : 0,
+  };
+}
+
+// ── 미완성 검사 ──
+// 덜 만든 월드컵도 저장은 되지만, 미완성이면 활성화(사이트 공개)할 수 없다
+export const optionName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : "");
+
+export function treeProblems(node: TreeNode, path = ""): string[] {
+  const at = (s: string) => (path ? `${path} → ${s}` : s);
+  if (node === null) return [path ? `${path} → 다음 질문이나 메뉴를 붙여 주세요` : "첫 질문이나 메뉴를 붙여 주세요"];
+  if (node.kind === "menu") {
+    const p: string[] = [];
+    if (!node.name.trim()) p.push(at("메뉴 이름을 써 주세요"));
+    if (node.url.trim() && !/^https?:\/\//i.test(node.url.trim())) p.push(at("지도 URL은 http로 시작해야 해요"));
+    return p;
+  }
+  // 질문 문장(title)은 선택 항목이라 검사하지 않음
+  return node.options.flatMap((opt, i) => {
+    const name = opt.label.trim() || optionName(i);
+    const p = opt.label.trim() ? [] : [at(`선택지 ${name} 이름을 써 주세요`)];
+    return [...p, ...treeProblems(opt.node, path ? `${path} → ${name}` : name)];
+  });
+}

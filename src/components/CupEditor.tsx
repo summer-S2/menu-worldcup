@@ -1,25 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router";
 import {
   DEFAULT_SETTINGS,
+  MAX_CUP_NAME,
   MAX_TEXT,
   MIN_OPTIONS,
   newId,
+  optionName,
+  treeProblems,
   type Option,
   type QuestionNode,
   type Settings,
   type TreeNode,
 } from "../types";
-import { safeUrl, saveData, type SiteData } from "../api";
+import { getCup, updateCup } from "../api";
 
 type Props = {
   password: string;
-  tree: TreeNode;
-  settings: Settings;
-  onSaved: (data: SiteData) => void;
-  onExit: () => void;
+  onChanged: () => void; // 저장 후 공개 페이지 데이터 다시 불러오기
 };
 
-type Msg = { kind: "" | "ok" | "err"; text: string };
+type Msg = { kind: "" | "ok" | "err" | "warn"; text: string };
 
 const newQuestion = (): QuestionNode => ({
   kind: "q",
@@ -31,46 +32,59 @@ const newQuestion = (): QuestionNode => ({
   ],
 });
 
-// 선택지 이름표: A, B, C, ...
-const optName = (i: number) => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : "");
 const EXAMPLES = ["고기", "면", "밥", "빵"];
 
-// 비어있는 칸 / 누락 항목 찾기
-function findProblems(node: TreeNode, path = "처음"): string[] {
-  if (node === null) return [`${path}: 비어 있음`];
-  if (node.kind === "menu") {
-    const p: string[] = [];
-    if (!node.name.trim()) p.push(`${path}: 메뉴 이름 없음`);
-    if (node.url.trim() && !safeUrl(node.url)) p.push(`${path}: 지도 URL은 http로 시작해야 함`);
-    return p;
-  }
-  // 질문 문장(title)은 선택 항목이라 검사하지 않음
-  return node.options.flatMap((opt, i) => {
-    const name = opt.label.trim() || optName(i);
-    const p = opt.label.trim() ? [] : [`${path} → ${name}: 선택지 이름 없음`];
-    return [...p, ...findProblems(opt.node, `${path} → ${name}`)];
-  });
-}
+const summarize = (problems: string[]) =>
+  problems.slice(0, 3).join(" / ") + (problems.length > 3 ? ` 외 ${problems.length - 3}곳` : "");
 
-export default function Admin({ password, tree, settings, onSaved, onExit }: Props) {
-  const [draft, setDraft] = useState<TreeNode>(tree);
-  const [texts, setTexts] = useState<Settings>(settings);
+// 월드컵 하나 편집: 이름, 사이트 문구, 메뉴 트리
+export default function CupEditor({ password, onChanged }: Props) {
+  const { cupId = "" } = useParams();
+  const navigate = useNavigate();
+  const [loaded, setLoaded] = useState<"loading" | "ok" | "missing" | "error">("loading");
+  const [active, setActive] = useState(false);
+  const [name, setName] = useState("");
+  const [draft, setDraft] = useState<TreeNode>(null);
+  const [texts, setTexts] = useState<Settings>({ introText: "", title: "", subtitle: "" });
   const [msg, setMsg] = useState<Msg>({ kind: "", text: "" });
   const [busy, setBusy] = useState(false);
+  const [showErrors, setShowErrors] = useState(false); // 저장을 누른 뒤 비어 있는 자리를 빨갛게 표시
+
+  useEffect(() => {
+    setLoaded("loading");
+    getCup(password, cupId)
+      .then(({ cup, active }) => {
+        setName(cup.name);
+        setDraft(cup.tree);
+        setTexts(cup.settings);
+        setActive(active);
+        setLoaded("ok");
+      })
+      .catch((e) => setLoaded(e?.status === 404 ? "missing" : "error"));
+  }, [password, cupId]);
 
   const save = async () => {
-    const problems = draft === null ? [] : findProblems(draft);
-    if (problems.length) {
-      const more = problems.length > 3 ? ` 외 ${problems.length - 3}개` : "";
-      setMsg({ kind: "err", text: `채워야 할 곳이 있어요: ${problems.slice(0, 3).join(" / ")}${more}` });
+    if (!name.trim()) {
+      setMsg({ kind: "err", text: "월드컵 이름을 입력해 주세요" });
+      return;
+    }
+    const problems = treeProblems(draft);
+    setShowErrors(problems.length > 0);
+    // 활성 월드컵은 사이트에 바로 나가므로 미완성으로 저장할 수 없음
+    if (active && problems.length) {
+      setMsg({ kind: "err", text: `활성 월드컵은 다 채워야 저장할 수 있어요: ${summarize(problems)}` });
       return;
     }
     setBusy(true);
     setMsg({ kind: "", text: "저장 중..." });
     try {
-      await saveData(password, { tree: draft, settings: texts });
-      onSaved({ tree: draft, settings: texts });
-      setMsg({ kind: "ok", text: "저장했어요 ✅" });
+      await updateCup(password, cupId, { name, tree: draft, settings: texts });
+      if (active) onChanged();
+      setMsg(
+        problems.length
+          ? { kind: "warn", text: `저장했어요. 미완성 ${problems.length}곳이 있어서 아직 활성화할 수 없어요: ${summarize(problems)}` }
+          : { kind: "ok", text: "저장했어요 ✅" }
+      );
     } catch (e) {
       setMsg({ kind: "err", text: `저장에 실패했어요 (${(e as Error).message})` });
     } finally {
@@ -78,20 +92,46 @@ export default function Admin({ password, tree, settings, onSaved, onExit }: Pro
     }
   };
 
+  const back = (
+    <button className="btn" onClick={() => navigate("/admin")}>
+      ← 목록
+    </button>
+  );
+
+  if (loaded !== "ok") {
+    const text =
+      loaded === "loading" ? "불러오는 중..." : loaded === "missing" ? "없는 월드컵이에요 🫥" : "불러오지 못했어요 😵";
+    return (
+      <section>
+        <div className="admin-bar">
+          <b>🔧 월드컵 편집</b>
+          <div className="row">{back}</div>
+        </div>
+        <div className="card empty">{text}</div>
+      </section>
+    );
+  }
+
   return (
     <section>
       <div className="admin-bar">
-        <b>🔧 메뉴 관리</b>
+        <b>
+          🔧 월드컵 편집 {active && <span className="badge">활성</span>}
+        </b>
         <div className="row">
-          <button className="btn" onClick={onExit}>
-            나가기
-          </button>
+          {back}
           <button className="btn primary" onClick={save} disabled={busy}>
             저장
           </button>
         </div>
       </div>
       <p className={`msg ${msg.kind}`}>{msg.text}</p>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <label className="texts">
+          <span className="qhead" style={{ margin: 0 }}>🏷️ 월드컵 이름</span>
+          <input type="text" maxLength={MAX_CUP_NAME} value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+      </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="qhead">✏️ 사이트 문구</div>
         <div className="texts">
@@ -115,10 +155,10 @@ export default function Admin({ password, tree, settings, onSaved, onExit }: Pro
           ))}
         </div>
         <p className="hint" style={{ margin: "8px 0 0" }}>
-          비워 두면 흐린 글씨의 기본 문구가 보여요.
+          비워 두면 흐린 글씨의 기본 문구가 보여요. 이 월드컵이 활성일 때만 사이트에 나와요.
         </p>
       </div>
-      <div className="card">
+      <div className={`card${showErrors ? " show-errors" : ""}`}>
         <div className="hint" style={{ marginBottom: 8 }}>
           첫 질문
         </div>
@@ -135,7 +175,7 @@ export default function Admin({ password, tree, settings, onSaved, onExit }: Pro
 function NodeEditor({ node, onChange }: { node: TreeNode; onChange: (n: TreeNode) => void }) {
   if (node === null) {
     return (
-      <div className="choose">
+      <div className="choose empty-slot">
         <button className="btn small" onClick={() => onChange(newQuestion())}>
           + 질문 붙이기
         </button>
@@ -161,12 +201,14 @@ function NodeEditor({ node, onChange }: { node: TreeNode; onChange: (n: TreeNode
         </div>
         <input
           type="text"
+          required
           placeholder="메뉴 이름 (예: 삼겹살)"
           value={node.name}
           onChange={(e) => onChange({ ...node, name: e.target.value })}
         />
         <input
           type="url"
+          pattern="https?://.*"
           placeholder="지도 URL (https://...)"
           value={node.url}
           onChange={(e) => onChange({ ...node, url: e.target.value })}
@@ -196,7 +238,7 @@ function NodeEditor({ node, onChange }: { node: TreeNode; onChange: (n: TreeNode
         <OptionEditor
           key={i}
           color={i % 5}
-          placeholder={`선택지 ${optName(i)}${EXAMPLES[i] ? ` (예: ${EXAMPLES[i]})` : ""}`}
+          placeholder={`선택지 ${optionName(i)}${EXAMPLES[i] ? ` (예: ${EXAMPLES[i]})` : ""}`}
           option={opt}
           onChange={(o) => setOption(i, o)}
           onRemove={node.options.length > MIN_OPTIONS ? () => removeOption(i) : undefined}
@@ -226,6 +268,7 @@ function OptionEditor({ color, placeholder, option, onChange, onRemove }: Option
         <span className={`dot c${color}`} />
         <input
           type="text"
+          required
           placeholder={placeholder}
           value={option.label}
           onChange={(e) => onChange({ ...option, label: e.target.value })}

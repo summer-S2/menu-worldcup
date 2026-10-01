@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { displaySettings, type Settings, type TreeNode } from "./types";
-import { fetchData, type SiteData } from "./api";
+import { fetchData } from "./api";
 import Game from "./components/Game";
-import Admin from "./components/Admin";
+import AdminList from "./components/AdminList";
+import CupEditor from "./components/CupEditor";
 import PasswordModal from "./components/PasswordModal";
 import Intro from "./components/Intro";
 
@@ -17,7 +18,8 @@ export default function App() {
   const [load, setLoad] = useState<LoadState>("loading");
   const [password, setPassword] = useState<string | null>(null);
 
-  useEffect(() => {
+  // 활성 월드컵 불러오기 (관리자가 저장/활성화를 바꾸면 다시 호출)
+  const refresh = () =>
     fetchData()
       .then((d) => {
         setTree(d.tree);
@@ -25,6 +27,9 @@ export default function App() {
         setLoad("ready");
       })
       .catch(() => setLoad("error"));
+
+  useEffect(() => {
+    refresh();
   }, []);
 
   // 이스터에그: 아이콘을 1.5초 안에 5번 누르면 관리 화면(암호 입력)으로
@@ -45,15 +50,14 @@ export default function App() {
     navigate("/start");
   };
 
-  const onSaved = (d: SiteData) => {
-    setTree(d.tree);
-    setSettings(d.settings);
-  };
-
   const text = displaySettings(settings);
 
   // 인트로는 제목/카드 없이 화면 전체를 쓴다 (문구는 불러온 뒤에 표시해서 기본 문구가 잠깐 보였다 바뀌지 않게)
   if (pathname === "/") return <Intro text={load === "loading" ? "" : text.introText} />;
+
+  // 관리 화면은 암호를 확인한 뒤에만
+  const adminGate = (el: React.ReactNode) =>
+    password ? el : <PasswordModal onClose={() => navigate("/start")} onSuccess={setPassword} />;
 
   let content;
   if (load === "loading") content = <section className="card empty">불러오는 중...</section>;
@@ -61,16 +65,8 @@ export default function App() {
   else
     content = (
       <Routes>
-        <Route
-          path="/admin"
-          element={
-            password ? (
-              <Admin password={password} tree={tree} settings={settings} onSaved={onSaved} onExit={exitAdmin} />
-            ) : (
-              <PasswordModal onClose={() => navigate("/start")} onSuccess={setPassword} />
-            )
-          }
-        />
+        <Route path="/admin" element={adminGate(<AdminList password={password!} onChanged={refresh} onExit={exitAdmin} />)} />
+        <Route path="/admin/:cupId" element={adminGate(<CupEditor password={password!} onChanged={refresh} />)} />
         <Route path="*" element={<Game tree={tree} />} />
       </Routes>
     );

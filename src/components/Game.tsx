@@ -124,7 +124,8 @@ export default function Game({ tree }: { tree: TreeNode }) {
   }
 
   return (
-    <section className="card">
+    // 질문 화면은 카드 박스 없이 (뒤의 🤔가 가려지지 않게)
+    <section className={current.kind === "q" && pending === null ? "card bare" : "card"}>
       {body}
       {/* 결과 화면은 두구두구가 끝난 뒤 ResultView 안에서 보여줌 */}
       {current.kind !== "menu" && trail.length > 0 && <div className="trail">{trail.join(" → ")}</div>}

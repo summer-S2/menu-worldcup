@@ -13,9 +13,12 @@
 - **결과 화면**: 🐰와 폭죽이 빙글빙글 떨어지고, 지도 링크의 미리보기(OG) 카드가 나와요.
 - **결과 공유**: 폰에서는 공유창(카카오톡 등), PC에서는 링크 복사.
 - **관리 화면 (이스터에그)**: 제목의 🍽️를 1.5초 안에 5번 누르고 암호를 입력하면 들어갈 수 있어요.
+  - **월드컵 목록**: 여러 버전의 월드컵을 저장해 두고 만들기/복제/수정/삭제할 수 있어요. **활성화한 1개만** 사이트에 나와요.
+    - 활성 월드컵은 다른 걸 먼저 활성화해야 지울 수 있어요.
+    - 비활성 월드컵의 공유 링크는 "없어진 링크"로 안내돼요.
   - 질문, 선택지, 메뉴(이름 + 지도 URL)를 트리 형태로 추가하고 수정해요.
   - 저장하기 전에 빈 칸이 있으면 어디가 비었는지 알려줘요. 질문 문장은 비워 둬도 돼요.
-  - 인트로 문구, 제목, 부제도 여기서 바꿀 수 있어요. 비워 두면 기본 문구가 보여요.
+  - 인트로 문구, 제목, 부제도 월드컵마다 따로 정할 수 있어요. 비워 두면 기본 문구가 보여요.
 
 ## 주소
 
@@ -25,7 +28,8 @@
 | `/start` | 첫 질문 |
 | `/q/:id` | 중간 질문 |
 | `/r/:id` | 결과 (공유용) |
-| `/admin` | 관리 화면 (암호 필요) |
+| `/admin` | 관리: 월드컵 목록 (암호 필요) |
+| `/admin/:cupId` | 관리: 월드컵 편집 (암호 필요) |
 
 `id`는 질문과 메뉴마다 붙는 랜덤 값이라서 주소만 보고는 결과를 추측할 수 없어요. 선택지 이름을 바꿔도 `id`는 그대로라서 공유한 링크가 계속 동작해요.
 
@@ -33,9 +37,11 @@
 
 - **프론트엔드**: React + TypeScript + Vite, react-router
 - **서버**: Netlify Functions
-  - `netlify/functions/menu.mts` (`/api/menu`): 메뉴 데이터를 불러오고 저장해요. 저장은 암호 확인 후에만 돼요.
+  - `netlify/functions/menu.mts` (`/api/menu`): 공개용. **활성 월드컵**의 메뉴와 문구만 돌려줘요.
+  - `netlify/functions/admin.mts` (`/api/admin`): 관리자용. 암호 확인 후 월드컵 목록 조회/만들기/복제/수정/삭제/활성화를 해요.
   - `netlify/functions/og.mts` (`/api/og`): 지도 URL의 OG 정보(제목/설명/이미지)를 가져와요.
-- **저장소**: Netlify Blobs (`menu-worldcup` 스토어의 `tree` 키에 메뉴, `settings` 키에 사이트 문구)
+- **저장소**: Netlify Blobs (`menu-worldcup` 스토어의 `cups` 키에 `{ activeId, cups: [...] }`)
+  - 예전 형식(`tree`, `settings` 키)만 있으면 처음 불러올 때 "기본" 월드컵으로 자동으로 옮겨져요 (`netlify/lib/cups.mts`).
 
 ### 데이터 구조
 
@@ -44,6 +50,9 @@ type Option = { label: string; node: TreeNode };
 type QuestionNode = { kind: "q"; id: string; title: string; options: Option[] }; // 선택지 2개 이상
 type MenuNode = { kind: "menu"; id: string; name: string; url: string };
 type TreeNode = QuestionNode | MenuNode | null; // null = 아직 비어 있는 칸
+
+type Settings = { introText: string; title: string; subtitle: string };
+type Cup = { id: string; name: string; tree: TreeNode; settings: Settings; updatedAt: number };
 ```
 
 예전 형식(`left`/`right`)이나 빠진 항목이 있는 데이터는 불러올 때 자동으로 현재 형식으로 바뀌어요 (`src/types.ts`의 `normalizeNode`).
@@ -52,9 +61,14 @@ type TreeNode = QuestionNode | MenuNode | null; // null = 아직 비어 있는 �
 
 필요한 것: **Node.js 22.12 이상**
 
+프로젝트 폴더에 `.env` 파일을 만들고 관리자 암호를 적어 두세요. (`.gitignore`에 들어 있어서 GitHub에는 올라가지 않아요)
+
+```
+ADMIN_PASSWORD="원하는암호"
+```
+
 ```powershell
 npm install
-$env:ADMIN_PASSWORD = "원하는암호"
 npx netlify-cli dev
 ```
 

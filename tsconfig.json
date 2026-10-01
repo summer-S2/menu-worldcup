@@ -12,5 +12,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["src", "netlify/functions"]
+  "include": ["src", "netlify/functions", "netlify/lib"]
 }
